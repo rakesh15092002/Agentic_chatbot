@@ -1,0 +1,37 @@
+# ========================
+# GLOBAL IGNORES
+# ========================
+.DS_Store
+.vscode/
+
+# ========================
+# BACKEND (Python)
+# ========================
+backend/myenv/
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+
+# Database (Don't push local DBs)
+backend/chatbot.db
+backend/*.sqlite3
+
+# Environment Variables (VERY IMPORTANT: Never push these)
+backend/.env
+
+# ========================
+# FRONTEND (Next.js/Node)
+# ========================
+frontend/node_modules/
+frontend/.next/
+frontend/build/
+frontend/dist/
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Environment Variables
+frontend/.env.local
+frontend/.env
