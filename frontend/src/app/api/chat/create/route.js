@@ -1,34 +1,50 @@
-// src/app/api/chat/create/route.js
-import connectDB from "@/config/db";
-import Chat from "@/models/Chat";
-import { getAuth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server"; // Use 'auth', not 'getAuth'
 import { NextResponse } from "next/server";
+
+// 1. FIX: Use the standard URL (Single 'thread')
+const FASTAPI_URL = "http://127.0.0.1:8000/thread/create"; 
 
 export async function POST(req) {
   try {
-    const { userId } = getAuth(req);
-
+    // 2. FIX: Use auth() for App Router
+    const { userId } = await auth();
+    
     if (!userId) {
-      return NextResponse.json({ success: false, message: "User not authenticated" });
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
-    const chatData = {
-      userId,
-      messages: [],
-      name: "New Chat",
-    };
+    console.log(`Connecting to backend: ${FASTAPI_URL}...`);
 
-    await connectDB();
-    // Chat create karein aur response variable mein save karein
-    const newChat = await Chat.create(chatData); 
+    // 3. Send request to Python
+    const response = await fetch(`${FASTAPI_URL}?name=New%20Chat`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json" 
+      }
+    });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Backend Error Response:", errorText);
+      throw new Error(`Backend failed with status ${response.status}: ${errorText}`);
+    }
+
+    const backendData = await response.json(); 
+    
+    // 4. Return mapped data
     return NextResponse.json({ 
       success: true, 
-      message: "chat created", 
-      data: newChat // ID aur baaki details frontend ko bhejein
+      data: { 
+          _id: backendData.thread_id, 
+          chatId: backendData.thread_id,
+          name: backendData.name,
+          messages: [],
+          updatedAt: new Date().toISOString() // Add date for sorting
+      }
     });
 
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message });
+    console.error("Create Chat Error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

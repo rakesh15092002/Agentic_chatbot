@@ -69,3 +69,18 @@ def get_threads():
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+# 6️⃣ Delete a thread and its messages (NEW)
+def delete_thread(thread_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # First, delete all messages associated with this thread
+    cursor.execute("DELETE FROM messages WHERE thread_id=?", (thread_id,))
+    
+    # Then, delete the thread itself
+    cursor.execute("DELETE FROM threads WHERE id=?", (thread_id,))
+    
+    conn.commit()
+    conn.close()
+    return True
