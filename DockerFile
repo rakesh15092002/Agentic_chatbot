@@ -41,7 +41,7 @@ RUN npm install --omit=dev
 # Copy the built artifacts from Stage 1
 COPY --from=frontend-builder /app/frontend/.next ./.next
 COPY --from=frontend-builder /app/frontend/public ./public
-COPY frontend/next.config.mjs ./
+COPY frontend/next.config.ts ./
 # If you have other config files like tailwind.config.js, copy them too if needed, 
 # but usually .next contains what is needed.
 
