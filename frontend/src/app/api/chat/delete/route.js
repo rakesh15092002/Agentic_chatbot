@@ -14,7 +14,7 @@ export async function POST(req) {
 
     // 2. Call your FastAPI Backend
     // Note: FastAPI expects a DELETE request at /thread/{thread_id}
-    const fastApiResponse = await fetch(`${FASTAPI_BASE}/api/py/thread/${chatId}`, {
+    const fastApiResponse = await fetch(`${FASTAPI_BASE}/thread/${chatId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
