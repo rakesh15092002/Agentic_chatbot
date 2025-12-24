@@ -7,3 +7,4 @@ pydantic
 langchain
 langchain-groq
 yfinance
+langchain-community
