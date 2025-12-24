@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+const FASTAPI_BASE = `${process.env.BACKEND_BASE_URL}/api/py`;
+
 // We use POST here because your React component sends a POST request
 export async function POST(req) {
   try {
@@ -12,7 +14,7 @@ export async function POST(req) {
 
     // 2. Call your FastAPI Backend
     // Note: FastAPI expects a DELETE request at /thread/{thread_id}
-    const fastApiResponse = await fetch(`/api/py/thread/${chatId}`, {
+    const fastApiResponse = await fetch(`${FASTAPI_BASE}/api/py/thread/${chatId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

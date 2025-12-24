@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server"; // Use 'auth', not 'getAuth'
 import { NextResponse } from "next/server";
 
 // 1. FIX: Use the standard URL (Single 'thread')
-const FASTAPI_URL = "/api/py/thread/create"; 
+const FASTAPI_URL = `${process.env.BACKEND_BASE_URL}/api/py/thread/create`; 
 
 export async function POST(req) {
   try {

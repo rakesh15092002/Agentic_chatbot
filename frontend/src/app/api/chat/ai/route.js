@@ -1,7 +1,7 @@
 import { getAuth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const FASTAPI_BASE = "/api/py";
+const FASTAPI_BASE = `${process.env.BACKEND_BASE_URL}/api/py`;
 
 export async function POST(req) {
   try {
