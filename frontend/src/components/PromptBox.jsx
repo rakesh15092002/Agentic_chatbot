@@ -6,6 +6,9 @@ import { useAppContext } from "@/context/AppContext";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
+const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL
+const FASTAPI_BASE = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/api/py`;
+
 const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
   const [prompt, setPrompt] = useState("");
   const textareaRef = useRef(null);
@@ -72,7 +75,7 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
       }
 
       // --- FETCH STREAM ---
-      const response = await fetch("http://localhost:8000/chat/send", {
+      const response = await fetch(`${FASTAPI_BASE}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

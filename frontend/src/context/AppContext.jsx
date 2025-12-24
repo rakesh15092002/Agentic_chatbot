@@ -9,6 +9,9 @@ export const AppContext = createContext(null);
 
 export const useAppContext = () => useContext(AppContext);
 
+const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL
+const FASTAPI_BASE = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/api/py`;
+
 export const AppContextProvider = ({ children }) => {
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -25,7 +28,7 @@ export const AppContextProvider = ({ children }) => {
       if (!user) return;
       setLoading(true);
       const token = await getToken();
-      const { data } = await axios.get("/api/chat/get", {
+      const { data } = await axios.get(`${FRONTEND_URL}/api/chat/get`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -50,7 +53,7 @@ export const AppContextProvider = ({ children }) => {
       if (!user) return null;
       const token = await getToken();
       const { data } = await axios.post(
-        "/api/chat/create",
+        `${FRONTEND_URL}/api/chat/create`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -78,7 +81,7 @@ export const AppContextProvider = ({ children }) => {
   const fetchMessages = async (threadId) => {
     try {
       setIsMessagesLoading(true);
-      const { data } = await axios.get(`/api/py/thread/${threadId}/messages`);
+      const { data } = await axios.get(`${FASTAPI_BASE}/api/py/thread/${threadId}/messages`);
 
       if (data && data.messages) {
         setMessages(data.messages);
