@@ -9,7 +9,6 @@ export const AppContext = createContext(null);
 
 export const useAppContext = () => useContext(AppContext);
 
-const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL
 const FASTAPI_BASE = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/api/py`;
 
 export const AppContextProvider = ({ children }) => {
@@ -81,6 +80,7 @@ export const AppContextProvider = ({ children }) => {
   const fetchMessages = async (threadId) => {
     try {
       setIsMessagesLoading(true);
+      console.log(FASTAPI_BASE)
       const { data } = await axios.get(`${FASTAPI_BASE}/thread/${threadId}/messages`);
 
       if (data && data.messages) {
@@ -95,6 +95,7 @@ export const AppContextProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    console.log(FASTAPI_BASE)
     if (user) fetchUsersChats();
   }, [user]);
 
@@ -109,6 +110,7 @@ export const AppContextProvider = ({ children }) => {
         fetchUsersChats,
         createNewChat,
         loading,
+        FASTAPI_BASE,
         messages, 
         setMessages,
         fetchMessages,

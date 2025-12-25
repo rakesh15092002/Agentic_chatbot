@@ -6,8 +6,6 @@ import { useAppContext } from "@/context/AppContext";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
-const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL
-const FASTAPI_BASE = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/api/py`;
 
 const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
   const [prompt, setPrompt] = useState("");
@@ -20,7 +18,7 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
     agentic: false,
   });
 
-  const { user, createNewChat } = useAppContext();
+  const { user, createNewChat ,FASTAPI_BASE} = useAppContext();
 
   const toggleFeature = (feature) => {
     setActiveFeatures((prev) => ({
@@ -73,6 +71,8 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
         activeThreadId = newChat._id;
         isNewChat = true;
       }
+
+      console.log(FASTAPI_BASE)
 
       // --- FETCH STREAM ---
       const response = await fetch(`${FASTAPI_BASE}/chat/send`, {
