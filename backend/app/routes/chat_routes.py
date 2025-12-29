@@ -10,7 +10,7 @@ router = APIRouter()
 @router.post("/send")
 async def chat_send(request: ChatRequest):
     """
-    Stream chat response with full conversation history.
+    Stream chat response with RAG context from Pinecone.
     
     Request body:
     {
@@ -34,7 +34,7 @@ async def chat_send(request: ChatRequest):
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no"  # Disable nginx buffering
+                "X-Accel-Buffering": "no"
             }
         )
     except HTTPException:

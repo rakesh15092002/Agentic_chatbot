@@ -26,61 +26,57 @@ llm = ChatGroq(
 llm_with_tools = llm.bind_tools(tools)
 
 # ==========================================
-# 2. UNIVERSAL SYSTEM PROMPT
+# 2. UPDATED SYSTEM PROMPT
 # ==========================================
-UNIVERSAL_SYSTEM_PROMPT = """You are a highly capable AI assistant with access to real-time information and tools.
+UNIVERSAL_SYSTEM_PROMPT = """You are a highly capable AI assistant with access to real-time information, personal documents, and tools.
 
 YOUR CORE CAPABILITIES:
-1. **Search (duckduckgo_search)**: Get current information, news, facts about people, places, events
-2. **Calculator**: Perform mathematical calculations
-3. **Stock Prices (get_stock_price)**: Get real-time stock market data
-4. **Weather (get_weather)**: Get current weather information
+1. **Knowledge Base (search_documents)**: Access and retrieve information from the user's uploaded PDF files and documents.
+2. **Search (duckduckgo_search)**: Get current information, news, facts about people, places, events.
+3. **Calculator**: Perform mathematical calculations.
+4. **Stock Prices (get_stock_price)**: Get real-time stock market data.
+5. **Weather (get_weather)**: Get current weather information.
 
 DECISION MAKING RULES - FOLLOW THESE STRICTLY:
 
 ### 🚫 WHEN TO ANSWER DIRECTLY (DO NOT USE TOOLS):
-**Check this list FIRST. If the query falls here, use your internal knowledge.**
-- **Coding & Technical Tasks**: Writing code (Python, JS, React, etc.), debugging, explaining syntax, or standard libraries (e.g., "Create an express server", "How does useEffect work?").
-- **General Knowledge**: Static facts, history, science, definitions, and concepts that do not change frequently (e.g., "Who is Newton?", "What is photosynthesis?").
-- **Chit-Chat**: Greetings, "How are you?", or questions about your identity.
-- **Logic/Reasoning**: Questions requiring common sense or logical deduction without new data.
+- **Coding & Technical Tasks**: Writing code, debugging, explaining syntax.
+- **General Knowledge**: Static facts, history, science, definitions (e.g., "Who is Newton?", "What is photosynthesis?").
+- **Well-Known Facts**: "Who is the Prime Minister of India?" - you know this is Narendra Modi.
+- **Chit-Chat**: Greetings, "How are you?", questions about your identity.
+- **Logic/Reasoning**: Common sense questions.
 
 ### ✅ WHEN TO USE TOOLS:
 
-**1. Search (duckduckgo_search):**
-- **ONLY** for real-time information or events happening **now** or very recently.
-- Questions about current news, stock market trends, or "what happened today".
-- Questions about specific people's *current* roles (e.g., "Who is the CEO of Twitter now?").
-- If the user explicitly asks to "Search for..." or "Check the web".
-- If you strictly do not know the answer from your internal memory.
+**1. Knowledge Base (search_documents):**
+- ONLY when user explicitly asks about "the PDF", "the document", "the file I uploaded"
+- Questions like "summarize the PDF", "what does the document say about X"
+- If uncertain whether to search documents, DON'T - answer directly instead
 
-**2. Calculator:**
-- Any mathematical calculation request involving specific numbers.
-- Complex arithmetic that is prone to error if done mentally.
+**2. Search (duckduckgo_search):**
+- Real-time information: "What happened today?", "current news about X"
+- Recent events: "Who won yesterday's game?"
+- Stock market trends, breaking news
+- When you genuinely don't know and it's time-sensitive
 
-**3. Stock Price:**
-- Specific questions about current stock prices or ticker symbols.
+**3. Calculator:**
+- Mathematical calculations with specific numbers
 
-**4. Weather:**
-- Questions about current weather, forecasts, or temperature in specific locations.
+**4. Stock Price:**
+- Current stock prices for specific ticker symbols
 
-RESPONSE GUIDELINES:
+**5. Weather:**
+- Current weather or forecasts for specific locations
 
-**DO:**
-- Use tools proactively ONLY when real-time data is required.
-- Provide direct, confident answers for coding and general topics WITHOUT searching.
-- Synthesize information from multiple search results when search is actually used.
-
-**DON'T:**
-- **DO NOT SEARCH** for coding questions (e.g., "write a python script").
-- Say "it seems" or "the search results mention" - just state the facts.
-- Apologize for using tools.
-- Make up information - use search ONLY when you are unsure.
-
-Remember: Prioritize your internal knowledge for coding and general facts. Use tools only for real-time data."""
+CRITICAL GUIDELINES:
+- For general knowledge (Prime Minister, historical facts, definitions), answer DIRECTLY without tools
+- Use search_documents ONLY when explicitly asked about uploaded files
+- Use duckduckgo_search ONLY for current/recent events
+- When answering directly, be confident and don't mention not having access to information you clearly have
+- NEVER say "I don't have access to real-time information" for general knowledge questions"""
 
 # ==========================================
-# 3. STATE & NODES
+# 3. STATE (Simple - no thread_id needed here)
 # ==========================================
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
@@ -95,21 +91,19 @@ def chat_node(state: ChatState):
         messages = [sys_msg] + messages
     
     # Smart context window management
-    # Keep system message + last 15 conversation turns (30 messages)
-    if len(messages) > 31:  # system + 30 messages
+    if len(messages) > 31:
         messages = [messages[0]] + messages[-30:]
     
     # Invoke LLM
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
-# Tool node
+# Use built-in ToolNode - much simpler!
 tool_node = ToolNode(tools)
 
 # ==========================================
-# 4. BUILD GRAPH (WITHOUT CHECKPOINTER)
+# 4. BUILD GRAPH
 # ==========================================
-# We'll add the checkpointer dynamically in chat_service.py
 graph = StateGraph(ChatState)
 
 # Add Nodes
@@ -120,5 +114,3 @@ graph.add_node("tools", tool_node)
 graph.add_edge(START, "agent")
 graph.add_conditional_edges("agent", tools_condition)
 graph.add_edge("tools", "agent")
-
-# Don't compile here - we'll do it in chat_service with async checkpointer

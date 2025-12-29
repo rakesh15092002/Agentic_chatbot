@@ -2,14 +2,15 @@ import requests
 import yfinance as yf
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 # ==========================================
-# 1. IMPROVED SEARCH TOOL
+# 1. SEARCH TOOL
 # ==========================================
 class SearchInput(BaseModel):
     query: str = Field(
-        description="Search query for finding current information, news, facts, or events. Be specific and include relevant keywords."
+        description="Search query for finding current information, news, facts, or events."
     )
 
 @tool("duckduckgo_search", args_schema=SearchInput)
@@ -17,17 +18,17 @@ def duckduckgo_search(query: str) -> str:
     """
     Search the web for current information, news, events, and facts.
     
-    Use this for:
-    - Current events and news
-    - Information about people's current positions or roles
-    - Recent developments in any topic
-    - Any fact that might have changed recently
-    - General knowledge questions where you need verification
+    Use this ONLY for:
+    - Current events and breaking news
+    - Recent developments (last few days/weeks)
+    - Time-sensitive information
+    - Information you genuinely don't know
+    
+    DO NOT use for general knowledge like "Who is Prime Minister of India" - you already know this.
     
     Returns: Text with relevant search results
     """
     try:
-        # Increase results for better coverage
         wrapper = DuckDuckGoSearchAPIWrapper(max_results=5)
         results = wrapper.run(query)
         
@@ -40,11 +41,11 @@ def duckduckgo_search(query: str) -> str:
         return f"Search error: {str(e)}. Please try a different query."
 
 # ==========================================
-# 2. IMPROVED CALCULATOR
+# 2. CALCULATOR
 # ==========================================
 class CalculatorInput(BaseModel):
     expression: str = Field(
-        description="Mathematical expression to evaluate. Examples: '5 + 3', '100 * 2.5', '(10 + 5) / 3'"
+        description="Mathematical expression to evaluate. Examples: '5 + 3', '100 * 2.5'"
     )
 
 @tool("calculator", args_schema=CalculatorInput)
@@ -52,50 +53,45 @@ def calculator(expression: str) -> str:
     """
     Perform mathematical calculations.
     
-    Supports: addition (+), subtraction (-), multiplication (*), division (/), parentheses
-    Examples: '25 * 4', '(100 + 50) / 2', '3.14 * 10'
+    Supports: +, -, *, /, parentheses
+    Examples: '25 * 4', '(100 + 50) / 2'
     
     Returns: The calculated result
     """
     try:
-        # Security: only allow safe characters
         allowed_chars = set("0123456789+-*/(). ")
         if not all(char in allowed_chars for char in expression):
-            return "Error: Expression contains invalid characters. Only use numbers and basic operators (+, -, *, /, parentheses)."
+            return "Error: Invalid characters. Only use numbers and operators (+, -, *, /, parentheses)."
         
-        # Evaluate safely
         result = eval(expression)
         return f"{expression} = {result}"
     
     except ZeroDivisionError:
-        return "Error: Division by zero is not allowed."
+        return "Error: Division by zero."
     except Exception as e:
-        return f"Calculation error: {str(e)}. Please check your expression."
+        return f"Calculation error: {str(e)}"
 
 # ==========================================
-# 3. IMPROVED STOCK PRICE TOOL
+# 3. STOCK PRICE TOOL
 # ==========================================
 class StockInput(BaseModel):
     symbol: str = Field(
-        description="Stock ticker symbol (e.g., 'AAPL' for Apple, 'GOOGL' for Google, 'TSLA' for Tesla)"
+        description="Stock ticker symbol (e.g., 'AAPL', 'GOOGL', 'TSLA')"
     )
 
 @tool("get_stock_price", args_schema=StockInput)
 def get_stock_price(symbol: str) -> str:
     """
-    Get the latest stock price for a given ticker symbol.
+    Get current stock price for a ticker symbol.
     
-    Examples: AAPL (Apple), MSFT (Microsoft), GOOGL (Google), TSLA (Tesla)
+    Examples: AAPL (Apple), MSFT (Microsoft), GOOGL (Google)
     
     Returns: Current stock price and currency
     """
     try:
         ticker = yf.Ticker(symbol.upper())
-        
-        # Try fast_info first
         price = ticker.fast_info.get('last_price')
         
-        # Fallback to history
         if price is None:
             hist = ticker.history(period="1d")
             if not hist.empty:
@@ -105,25 +101,25 @@ def get_stock_price(symbol: str) -> str:
             currency = ticker.fast_info.get('currency', 'USD')
             return f"{symbol.upper()} is currently trading at {round(price, 2)} {currency}"
         else:
-            return f"Could not retrieve price for {symbol.upper()}. Please verify the ticker symbol is correct."
+            return f"Could not retrieve price for {symbol.upper()}. Verify the ticker symbol."
     
     except Exception as e:
-        return f"Error fetching stock price for {symbol}: {str(e)}. Make sure you're using a valid ticker symbol."
+        return f"Error fetching stock price: {str(e)}"
 
 # ==========================================
-# 4. IMPROVED WEATHER TOOL
+# 4. WEATHER TOOL
 # ==========================================
 class WeatherInput(BaseModel):
     city: str = Field(
-        description="City name to get weather for (e.g., 'London', 'New York', 'Tokyo', 'Mumbai')"
+        description="City name (e.g., 'London', 'New York', 'Tokyo')"
     )
 
 @tool("get_weather", args_schema=WeatherInput)
 def get_weather(city: str) -> str:
     """
-    Get current weather information for a city.
+    Get current weather for a city.
     
-    Returns: Temperature, weather condition, and humidity
+    Returns: Temperature, condition, and humidity
     """
     try:
         url = f"https://wttr.in/{city}?format=j1"
@@ -140,14 +136,63 @@ def get_weather(city: str) -> str:
             
             return f"Weather in {city.title()}: {temp_c}°C ({temp_f}°F), {condition}, Humidity: {humidity}%"
         else:
-            return f"Could not find weather data for '{city}'. Please check the city name."
+            return f"Could not find weather for '{city}'."
     
-    except requests.exceptions.Timeout:
-        return "Weather service timeout. Please try again."
     except Exception as e:
-        return f"Error getting weather for {city}: {str(e)}"
+        return f"Weather error: {str(e)}"
+
+# ==========================================
+# 5. DOCUMENT SEARCH TOOL (with config for thread_id)
+# ==========================================
+class DocumentSearchInput(BaseModel):
+    query: str = Field(
+        description="Search query to find information in uploaded PDF documents"
+    )
+
+@tool("search_documents", args_schema=DocumentSearchInput)
+def search_documents(query: str, config: RunnableConfig) -> str:
+    """
+    Search through uploaded PDF documents (Knowledge Base).
+    
+    Use this tool ONLY when:
+    - User asks about "the PDF", "the document", "the file I uploaded"
+    - User says "summarize the PDF" or similar
+    - Question is clearly about uploaded document content
+    
+    DO NOT use for general knowledge questions.
+    
+    Returns: Relevant excerpts from documents with sources.
+    """
+    try:
+        # Extract thread_id from config
+        thread_id = config.get("configurable", {}).get("thread_id", "")
+        
+        if not thread_id:
+            return "Error: No thread ID found. Cannot search documents."
+        
+        # Import here to avoid circular imports
+        from app.services.rag_service import search_documents as rag_search
+        
+        # Call the RAG search with thread_id
+        contexts = rag_search(query, thread_id, top_k=3)
+        
+        if not contexts:
+            return "No relevant information found in your uploaded documents."
+        
+        # Format the results
+        formatted_results = []
+        for ctx in contexts:
+            formatted_results.append(
+                f"[Source: {ctx['source']}, Page: {ctx['page']}, Relevance: {ctx['score']:.2f}]\n"
+                f"{ctx['text']}"
+            )
+        
+        return "\n\n---\n\n".join(formatted_results)
+    
+    except Exception as e:
+        return f"Error searching documents: {str(e)}"
 
 # ==========================================
 # EXPORT ALL TOOLS
 # ==========================================
-tools = [duckduckgo_search, calculator, get_stock_price, get_weather]
+tools = [duckduckgo_search, calculator, get_stock_price, get_weather, search_documents]
