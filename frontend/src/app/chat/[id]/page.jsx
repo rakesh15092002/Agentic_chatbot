@@ -15,7 +15,16 @@ export default function ChatPage({ params }) {
   const [expand, setExpand] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false); 
    
-  const { selectedChat, chats, setSelectedChat, fetchMessages, messages: contextMessages, isMessagesLoading } = useAppContext();
+  const { 
+    selectedChat, 
+    chats, 
+    setSelectedChat, 
+    fetchMessages, 
+    messages: contextMessages, 
+    isMessagesLoading,
+    // ✅ 1. Get the new helper function from Context
+    refreshTitleAfterDelay 
+  } = useAppContext();
   
   // Local state for immediate UI updates during streaming
   const [messages, setMessages] = useState([]);
@@ -39,6 +48,14 @@ export default function ChatPage({ params }) {
     }
   }, [contextMessages]);
 
+  // ✅ 2. NEW EFFECT: Trigger Sidebar Refresh on First Message
+  // When the user sends the very first message, this runs and updates the title after 2.5s
+  useEffect(() => {
+    if (messages.length === 1 && messages[0].role === "user") {
+        refreshTitleAfterDelay();
+    }
+  }, [messages, refreshTitleAfterDelay]);
+
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
@@ -51,8 +68,7 @@ export default function ChatPage({ params }) {
       
       <div className="flex-1 flex flex-col items-center justify-center bg-[#292a2d] text-white relative">
         
-        {/* --- MOBILE TOP BAR (ADDED) --- */}
-        {/* This is required to open the sidebar on small screens */}
+        {/* --- MOBILE TOP BAR --- */}
         <div className="md:hidden w-full flex items-center justify-between py-4 px-4 shrink-0 z-20 absolute top-0 left-0 bg-[#292a2d]">
             <Image
                 onClick={() => setExpand(!expand)}
@@ -63,10 +79,11 @@ export default function ChatPage({ params }) {
             <Image className="opacity-70 w-6" src={assets.chat_icon} alt="Chat" />
         </div>
 
-        {/* Chat Name Pill (Hidden on mobile to avoid overlap, or you can adjust top spacing) */}
-        {selectedChat?.name && (
+        {/* --- CHAT NAME PILL --- */}
+        {/* ✅ 3. Updated to show Title OR Name (matches Sidebar logic) */}
+        {(selectedChat?.title || selectedChat?.name) && (
           <p className="hidden md:block fixed top-6 border border-white/10 py-1.5 px-4 rounded-full font-medium text-sm z-20 bg-[#292a2d] shadow-md">
-            {selectedChat.name}
+            {selectedChat.title || selectedChat.name}
           </p>
         )}
 

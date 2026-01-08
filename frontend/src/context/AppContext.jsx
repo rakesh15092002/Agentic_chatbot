@@ -22,10 +22,11 @@ export const AppContextProvider = ({ children }) => {
   const [messages, setMessages] = useState([]); 
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
 
+  // Function to fetch all chats (Sidebar list)
   const fetchUsersChats = async () => {
     try {
       if (!user) return;
-      setLoading(true);
+      // Don't set loading=true here to avoid Sidebar flickering during background refresh
       const token = await getToken();
       const { data } = await axios.get(`/api/chat/get`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -40,13 +41,18 @@ export const AppContextProvider = ({ children }) => {
       chatList.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       setChats(chatList);
     } catch (error) {
-      toast.error("Failed to fetch chats");
-    } finally {
-      setLoading(false);
+      console.error("Failed to fetch chats", error);
     }
   };
 
-  // --- MODIFIED: Added 'redirect' parameter ---
+  // ✅ NEW HELPER: Call this from your Chat Page after sending the FIRST message
+  const refreshTitleAfterDelay = () => {
+     // Wait 2.5 seconds for the 8B model to generate the title, then refresh sidebar
+     setTimeout(() => {
+        fetchUsersChats();
+     }, 2500);
+  };
+
   const createNewChat = async (redirect = true) => {
     try {
       if (!user) return null;
@@ -61,7 +67,6 @@ export const AppContextProvider = ({ children }) => {
         const newChat = data.data;
         setChats((prev) => [newChat, ...prev]);
         
-        // Only redirect if explicitly requested (Sidebar usage would use router.push separately anyway now)
         if (redirect) {
             router.push(`/chat/${newChat._id}`);
             toast.success("New chat started");
@@ -80,7 +85,6 @@ export const AppContextProvider = ({ children }) => {
   const fetchMessages = async (threadId) => {
     try {
       setIsMessagesLoading(true);
-      console.log(FASTAPI_BASE)
       const { data } = await axios.get(`${FASTAPI_BASE}/thread/${threadId}/messages`);
 
       if (data && data.messages) {
@@ -95,7 +99,6 @@ export const AppContextProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    console.log(FASTAPI_BASE)
     if (user) fetchUsersChats();
   }, [user]);
 
@@ -114,7 +117,8 @@ export const AppContextProvider = ({ children }) => {
         messages, 
         setMessages,
         fetchMessages,
-        isMessagesLoading
+        isMessagesLoading,
+        refreshTitleAfterDelay // ✅ Exported helper
       }}
     >
       {children}

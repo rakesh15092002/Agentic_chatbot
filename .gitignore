@@ -35,3 +35,5 @@ frontend/yarn-error.log*
 # Environment Variables
 frontend/.env.local
 frontend/.env
+__pycache__/
+*.pyc

@@ -29,7 +29,6 @@ const Sidebar = ({ expand, setExpand }) => {
   return (
     <>
       {/* --- MOBILE OVERLAY --- */}
-      {/* This dark layer appears behind the sidebar on mobile to close it */}
       <div 
         onClick={() => setExpand(false)}
         className={`md:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300
@@ -86,11 +85,13 @@ const Sidebar = ({ expand, setExpand }) => {
           >
             <p className="my-2 px-2 font-medium text-xs uppercase tracking-wider">Recents</p>
             {chats
-              .filter((chat) => chat && chat.name)
+              // ✅ CHANGE 1: Allow chats that have EITHER a title OR a name
+              .filter((chat) => chat && (chat.title || chat.name))
               .map((chat) => (
                 <ChatLabel 
                     key={chat._id} 
-                    name={chat.name} 
+                    // ✅ CHANGE 2: Prioritize 'title', fallback to 'name', then "New Chat"
+                    name={chat.title || chat.name || "New Chat"} 
                     id={chat._id} 
                     openMenu={openMenu} 
                     setOpenMenu={setOpenMenu} 
