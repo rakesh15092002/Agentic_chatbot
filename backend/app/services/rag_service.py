@@ -1,4 +1,3 @@
-# backend/app/services/rag_service.py
 import os
 import shutil
 from fastapi import UploadFile
@@ -14,9 +13,9 @@ logger = logging.getLogger(__name__)
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 
-# ✅ Use Google Gemini Embeddings (No DLL issues!)
+# Use Google Gemini Embeddings
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="text-embedding-004",  # 768 dimensions
+    model="models/text-embedding-004",
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
 
@@ -28,30 +27,26 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 async def process_and_store_pdf(file: UploadFile, thread_id: str):
-    """
-    1. Saves file temporarily.
-    2. Extracts text & chunks it.
-    3. Embeds & Upserts to Pinecone with thread_id metadata.
-    """
+    """Process PDF and store in Pinecone with thread_id metadata."""
     temp_filename = None
     
     try:
-        # 1. Save file temporarily
+        # Save file temporarily
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
         logger.info(f"Processing PDF: {file.filename} for thread: {thread_id}")
 
-        # 2. Load PDF
+        # Load PDF
         loader = PyPDFLoader(temp_filename)
         documents = loader.load()
         
-        # 3. Split into chunks
+        # Split into chunks
         chunks = text_splitter.split_documents(documents)
         logger.info(f"Split into {len(chunks)} chunks")
 
-        # 4. Prepare Vectors with Metadata
+        # Prepare Vectors with Metadata
         vectors_to_upsert = []
         
         for i, doc in enumerate(chunks):
@@ -73,7 +68,7 @@ async def process_and_store_pdf(file: UploadFile, thread_id: str):
                 }
             })
 
-        # 5. Upsert to Pinecone in batches
+        # Upsert to Pinecone in batches
         if vectors_to_upsert:
             batch_size = 100
             for i in range(0, len(vectors_to_upsert), batch_size):
@@ -82,7 +77,7 @@ async def process_and_store_pdf(file: UploadFile, thread_id: str):
             
             logger.info(f"Uploaded {len(vectors_to_upsert)} vectors to Pinecone")
 
-        # 6. Cleanup
+        # Cleanup
         if temp_filename and os.path.exists(temp_filename):
             os.remove(temp_filename)
             
@@ -97,14 +92,12 @@ async def process_and_store_pdf(file: UploadFile, thread_id: str):
 
 
 def search_documents(query: str, thread_id: str, top_k: int = 5):
-    """
-    Search Pinecone for relevant documents filtered by thread_id.
-    """
+    """Search Pinecone for relevant documents filtered by thread_id."""
     try:
-        # 1. Embed the query
+        # Embed the query
         query_vector = embeddings.embed_query(query)
         
-        # 2. Query Pinecone with thread_id filter
+        # Query Pinecone with thread_id filter
         results = index.query(
             vector=query_vector,
             top_k=top_k,
@@ -112,7 +105,7 @@ def search_documents(query: str, thread_id: str, top_k: int = 5):
             filter={"thread_id": thread_id}
         )
         
-        # 3. Extract context
+        # Extract context
         contexts = []
         for match in results.get('matches', []):
             if match.get('metadata') and match['metadata'].get('text'):
@@ -131,12 +124,10 @@ def search_documents(query: str, thread_id: str, top_k: int = 5):
 
 
 def delete_thread_documents(thread_id: str):
-    """
-    Delete all documents associated with a thread_id from Pinecone.
-    """
+    """Delete all documents associated with a thread_id from Pinecone."""
     try:
         # Query to get all IDs for this thread
-        dummy_vector = [0.0] * 768  # Gemini embedding-001 dimension
+        dummy_vector = [0.0] * 768  # Gemini embedding dimension
         results = index.query(
             vector=dummy_vector,
             top_k=10000,

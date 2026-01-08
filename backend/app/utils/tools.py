@@ -15,8 +15,7 @@ class SearchInput(BaseModel):
 
 @tool("duckduckgo_search", args_schema=SearchInput)
 def duckduckgo_search(query: str) -> str:
-    """
-    Search the web for current information, news, events, and facts.
+    """Search the web for current information, news, events, and facts.
     
     Use this ONLY for:
     - Current events and breaking news
@@ -24,9 +23,7 @@ def duckduckgo_search(query: str) -> str:
     - Time-sensitive information
     - Information you genuinely don't know
     
-    DO NOT use for general knowledge like "Who is Prime Minister of India" - you already know this.
-    
-    Returns: Text with relevant search results
+    DO NOT use for general knowledge.
     """
     try:
         wrapper = DuckDuckGoSearchAPIWrapper(max_results=5)
@@ -50,13 +47,10 @@ class CalculatorInput(BaseModel):
 
 @tool("calculator", args_schema=CalculatorInput)
 def calculator(expression: str) -> str:
-    """
-    Perform mathematical calculations.
+    """Perform mathematical calculations.
     
     Supports: +, -, *, /, parentheses
     Examples: '25 * 4', '(100 + 50) / 2'
-    
-    Returns: The calculated result
     """
     try:
         allowed_chars = set("0123456789+-*/(). ")
@@ -81,12 +75,9 @@ class StockInput(BaseModel):
 
 @tool("get_stock_price", args_schema=StockInput)
 def get_stock_price(symbol: str) -> str:
-    """
-    Get current stock price for a ticker symbol.
+    """Get current stock price for a ticker symbol.
     
     Examples: AAPL (Apple), MSFT (Microsoft), GOOGL (Google)
-    
-    Returns: Current stock price and currency
     """
     try:
         ticker = yf.Ticker(symbol.upper())
@@ -116,11 +107,7 @@ class WeatherInput(BaseModel):
 
 @tool("get_weather", args_schema=WeatherInput)
 def get_weather(city: str) -> str:
-    """
-    Get current weather for a city.
-    
-    Returns: Temperature, condition, and humidity
-    """
+    """Get current weather for a city."""
     try:
         url = f"https://wttr.in/{city}?format=j1"
         response = requests.get(url, timeout=5)
@@ -142,7 +129,7 @@ def get_weather(city: str) -> str:
         return f"Weather error: {str(e)}"
 
 # ==========================================
-# 5. DOCUMENT SEARCH TOOL (with config for thread_id)
+# 5. DOCUMENT SEARCH TOOL (Fixed - gets thread_id from config)
 # ==========================================
 class DocumentSearchInput(BaseModel):
     query: str = Field(
@@ -151,8 +138,7 @@ class DocumentSearchInput(BaseModel):
 
 @tool("search_documents", args_schema=DocumentSearchInput)
 def search_documents(query: str, config: RunnableConfig) -> str:
-    """
-    Search through uploaded PDF documents (Knowledge Base).
+    """Search through uploaded PDF documents for relevant information.
     
     Use this tool ONLY when:
     - User asks about "the PDF", "the document", "the file I uploaded"
@@ -160,8 +146,6 @@ def search_documents(query: str, config: RunnableConfig) -> str:
     - Question is clearly about uploaded document content
     
     DO NOT use for general knowledge questions.
-    
-    Returns: Relevant excerpts from documents with sources.
     """
     try:
         # Extract thread_id from config
@@ -177,7 +161,7 @@ def search_documents(query: str, config: RunnableConfig) -> str:
         contexts = rag_search(query, thread_id, top_k=3)
         
         if not contexts:
-            return "No relevant information found in your uploaded documents."
+            return "No relevant information found in your uploaded documents. Make sure you've uploaded PDF files first."
         
         # Format the results
         formatted_results = []
