@@ -22,7 +22,7 @@ export default function ChatPage({ params }) {
     fetchMessages, 
     messages: contextMessages, 
     isMessagesLoading,
-    // ✅ 1. Get the new helper function from Context
+    // ✅ 1. Get the helper function we created in AppContext
     refreshTitleAfterDelay 
   } = useAppContext();
   
@@ -31,36 +31,50 @@ export default function ChatPage({ params }) {
 
   const containerRef = useRef(null);
 
+  // ---------------------------------------------------------
+  // ✅ FIX: SPLIT THE EFFECTS TO STOP INFINITE LOOP
+  // ---------------------------------------------------------
+
+  // 1. Fetch Messages ONLY when 'id' changes (Ignore 'chats')
   useEffect(() => {
-    if (chats.length > 0) {
-      const currentChat = chats.find(c => c._id === id);
-      if (currentChat) setSelectedChat(currentChat);
-    }
     if (id) {
       fetchMessages(id);
     }
-  }, [id, chats, setSelectedChat]); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]); 
 
-  // Sync local state when context messages finish loading
+  // 2. Set Selected Chat Logic (Safe to depend on 'chats' here)
+  useEffect(() => {
+    if (chats.length > 0 && id) {
+      const currentChat = chats.find(c => c._id === id);
+      if (currentChat) {
+        setSelectedChat(currentChat);
+      }
+    }
+  }, [chats, id, setSelectedChat]);
+
+  // 3. Sync local state when context messages load
   useEffect(() => {
     if (contextMessages) {
       setMessages(contextMessages);
     }
   }, [contextMessages]);
 
-  // ✅ 2. NEW EFFECT: Trigger Sidebar Refresh on First Message
-  // When the user sends the very first message, this runs and updates the title after 2.5s
+  // 4. ✅ NEW: Trigger Sidebar Refresh on First Message (Auto-Title)
   useEffect(() => {
     if (messages.length === 1 && messages[0].role === "user") {
         refreshTitleAfterDelay();
     }
   }, [messages, refreshTitleAfterDelay]);
 
+  // 5. Auto Scroll
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
     }
   }, [messages, isMessagesLoading]);
+
+  // ---------------------------------------------------------
 
   return (
     <div className="flex h-screen overflow-hidden"> 
@@ -80,7 +94,7 @@ export default function ChatPage({ params }) {
         </div>
 
         {/* --- CHAT NAME PILL --- */}
-        {/* ✅ 3. Updated to show Title OR Name (matches Sidebar logic) */}
+        {/* ✅ Updated to show dynamic title */}
         {(selectedChat?.title || selectedChat?.name) && (
           <p className="hidden md:block fixed top-6 border border-white/10 py-1.5 px-4 rounded-full font-medium text-sm z-20 bg-[#292a2d] shadow-md">
             {selectedChat.title || selectedChat.name}
@@ -104,7 +118,6 @@ export default function ChatPage({ params }) {
                         key={index} 
                         role={msg.role} 
                         content={msg.content}
-                        // Only show loader for the last message if we are generating
                         isGenerating={isGenerating && index === messages.length - 1}
                     />
                 ))}

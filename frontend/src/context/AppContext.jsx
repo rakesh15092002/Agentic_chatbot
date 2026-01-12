@@ -1,7 +1,7 @@
 "use client";
 import { useAuth, useUser } from "@clerk/nextjs";
 import axios from "axios";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react"; // 1. Import useCallback
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
@@ -22,11 +22,10 @@ export const AppContextProvider = ({ children }) => {
   const [messages, setMessages] = useState([]); 
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
 
-  // Function to fetch all chats (Sidebar list)
-  const fetchUsersChats = async () => {
+  // ✅ FIX 1: Wrap fetchUsersChats in useCallback so it doesn't change on every render
+  const fetchUsersChats = useCallback(async () => {
     try {
       if (!user) return;
-      // Don't set loading=true here to avoid Sidebar flickering during background refresh
       const token = await getToken();
       const { data } = await axios.get(`/api/chat/get`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -43,17 +42,17 @@ export const AppContextProvider = ({ children }) => {
     } catch (error) {
       console.error("Failed to fetch chats", error);
     }
-  };
+  }, [user, getToken]); // Dependencies
 
-  // ✅ NEW HELPER: Call this from your Chat Page after sending the FIRST message
-  const refreshTitleAfterDelay = () => {
-     // Wait 2.5 seconds for the 8B model to generate the title, then refresh sidebar
-     setTimeout(() => {
+  // ✅ FIX 2: Wrap helper in useCallback
+  const refreshTitleAfterDelay = useCallback(() => {
+      setTimeout(() => {
         fetchUsersChats();
-     }, 2500);
-  };
+      }, 2500);
+  }, [fetchUsersChats]);
 
-  const createNewChat = async (redirect = true) => {
+  // ✅ FIX 3: Wrap createNewChat in useCallback
+  const createNewChat = useCallback(async (redirect = true) => {
     try {
       if (!user) return null;
       const token = await getToken();
@@ -80,9 +79,10 @@ export const AppContextProvider = ({ children }) => {
       toast.error("Failed to create chat");
       return null;
     }
-  };
+  }, [user, getToken, router]);
 
-  const fetchMessages = async (threadId) => {
+  // ✅ FIX 4: Wrap fetchMessages in useCallback
+  const fetchMessages = useCallback(async (threadId) => {
     try {
       setIsMessagesLoading(true);
       const { data } = await axios.get(`${FASTAPI_BASE}/thread/${threadId}/messages`);
@@ -96,11 +96,12 @@ export const AppContextProvider = ({ children }) => {
     } finally {
       setIsMessagesLoading(false);
     }
-  };
+  }, []);
 
+  // Initial load effect
   useEffect(() => {
     if (user) fetchUsersChats();
-  }, [user]);
+  }, [user, fetchUsersChats]); // Safe now because fetchUsersChats is stable
 
   return (
     <AppContext.Provider
@@ -118,7 +119,7 @@ export const AppContextProvider = ({ children }) => {
         setMessages,
         fetchMessages,
         isMessagesLoading,
-        refreshTitleAfterDelay // ✅ Exported helper
+        refreshTitleAfterDelay
       }}
     >
       {children}

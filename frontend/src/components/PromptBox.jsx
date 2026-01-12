@@ -20,7 +20,8 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
     agentic: false,
   });
 
-  const { user, createNewChat, FASTAPI_BASE } = useAppContext();
+  // ✅ FIXED: Changed 'loadChats' to 'fetchUsersChats' to match your AppContext
+  const { user, createNewChat, FASTAPI_BASE, fetchUsersChats } = useAppContext();
 
   const toggleFeature = (feature) => {
     setActiveFeatures((prev) => ({
@@ -35,48 +36,41 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
     e.target.style.height = `${e.target.scrollHeight}px`;
   };
 
-  // Fetch messages to refresh chat after upload - FIXED VERSION
+  // Fetch messages to refresh chat after upload
   const fetchMessages = async (activeThreadId) => {
     try {
       const response = await fetch(`${FASTAPI_BASE}/thread/${activeThreadId}/messages`);
       if (response.ok) {
         const data = await response.json();
         
-        // Handle different response formats
         let messagesArray = [];
         
         if (Array.isArray(data)) {
-          // If data is already an array
           messagesArray = data;
         } else if (data && Array.isArray(data.messages)) {
-          // If data has a messages property that's an array
           messagesArray = data.messages;
         } else if (data && typeof data === 'object') {
-          // If it's an object, try to extract messages
           messagesArray = Object.values(data).filter(item => 
             item && typeof item === 'object' && item.role && item.content
           );
         }
         
-        // Only update if we have valid messages
         if (messagesArray.length >= 0) {
           setMessages(messagesArray);
         }
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
-      // Don't clear messages on error, keep existing ones
     }
   };
 
-  // Handle file upload with confirmation
+  // Handle file upload
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     if (!user) return toast.error("Login to upload files");
 
-    // Clear input so same file can be selected again if needed
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     setIsUploading(true);
@@ -85,7 +79,6 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
     try {
       let activeThreadId = threadId;
 
-      // Agar chat ID nahi hai, toh nayi chat banayein
       if (!activeThreadId) {
         const newChat = await createNewChat(false);
         if (!newChat) throw new Error("Failed to create chat");
@@ -107,10 +100,9 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
           throw new Error(errorText || "Backend Upload Failed");
       }
 
-      const result = await response.json();
+      await response.json(); 
       toast.success(`✅ ${file.name} uploaded successfully!`, { id: loadingToast });
       
-      // Refresh messages to show confirmation
       await fetchMessages(activeThreadId);
 
     } catch (error) {
@@ -181,6 +173,14 @@ const PromptBox = ({ isLoading, setIsLoading, threadId, setMessages }) => {
             return newMessages;
           });
         }
+      }
+
+      // ✅ FIXED: Using 'fetchUsersChats' instead of 'loadChats'
+      if (fetchUsersChats) {
+        setTimeout(() => {
+          console.log("Refreshing sidebar...");
+          fetchUsersChats(); 
+        }, 2500); // 2.5s delay allows backend to save the title first
       }
 
       if (isNewChat) router.push(`/chat/${activeThreadId}`);

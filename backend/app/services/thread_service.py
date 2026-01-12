@@ -70,7 +70,7 @@ def get_threads():
     conn.close()
     return [dict(row) for row in rows]
 
-# 6️⃣ Delete a thread and its messages (NEW)
+# 6️⃣ Delete a thread and its messages
 def delete_thread(thread_id: str):
     conn = get_connection()
     cursor = conn.cursor()
@@ -84,3 +84,14 @@ def delete_thread(thread_id: str):
     conn.commit()
     conn.close()
     return True
+
+# 7️⃣ Update thread title (✅ NEW ADDITION)
+def update_thread_title(thread_id: str, title: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE threads SET name = ? WHERE id = ?",
+        (title, thread_id)
+    )
+    conn.commit()
+    conn.close()
