@@ -14,229 +14,214 @@ from app.utils.tools import tools as static_tools
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# Llama 3.3 70B
+# --- CONFIGURATION ---
+MODEL_NAME = "llama-3.3-70b-versatile"
+
+# 1. Main Model - Increased temperature for natural responses
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model=MODEL_NAME,
     api_key=os.getenv("GROQ_API_KEY"),
-    temperature=0.1,
+    temperature=0.4,  # ✅ Higher temp = more natural, less robotic
 )
 
-UNIVERSAL_SYSTEM_PROMPT = """You are a highly capable AI assistant with access to real-time information and tools, including GitHub integration.
+# 2. Fallback Model
+llm_fallback = ChatGroq(
+    model="llama-3.1-8b-instant", 
+    api_key=os.getenv("GROQ_API_KEY"),
+    temperature=0.3,  # ✅ Still conservative but not frozen
+)
 
-YOUR CAPABILITIES:
-1. **search_documents**: Search user's uploaded PDF files.
-2. **duckduckgo_search**: Get current information from the web.
-3. **calculator**: Perform calculations.
-4. **GitHub Tools**: When enabled, you have access to GitHub tools for searching repositories, reading files, and inspecting code.
+# --- IMPROVED SYSTEM PROMPT ---
+BASE_SYSTEM_PROMPT = """You are a friendly, helpful AI assistant. Respond naturally and conversationally.
 
-DECISION RULES:
+**Personality:**
+- Be warm and approachable
+- For simple greetings like "hi" or "hello", respond casually (e.g., "Hey! How can I help you today?")
+- For "how are you" questions, keep it brief and friendly (e.g., "I'm doing great, thanks! What can I do for you?")
+- Don't be overly formal or mechanical
+- Show personality while remaining professional
 
-### 🚫 ANSWER DIRECTLY (No tools needed):
-- **Static General Knowledge**: "What is the capital of France?", "What is a variable?"
-- **Historical Facts**: "When was Python created?"
-- **Chit-chat**: Greetings, casual conversation.
+**Tool Usage:**
+Use tools when you need specific information or capabilities:
+- **duckduckgo_search**: Current events, news, general web information
+- **calculator**: Mathematical calculations
+- **get_stock_price**: Stock market data (ticker symbols)
+- **get_weather**: Weather information for any city
+- **search_documents**: Search uploaded PDF documents
 
-### ✅ USE TOOLS (MANDATORY for these cases):
+**When GitHub tools are available:**
+- **search_repositories**: Find GitHub repositories
+- **get_file_contents**: Read files from repositories  
+- **list_commits**: View commit history (always use perPage=10)
+- **list_issues**: List repository issues
 
-**GitHub Tools** - Use when GitHub feature is enabled and:
-- User asks to "find a library", "search repo", or "look for code" (Use available search tool).
-- User asks to "read the code", "show me package.json", "check the README" of a specific repo (Use file reading tool).
-- User wants to explore GitHub repositories or view code files.
-- NOTE: Only use GitHub tools that are actually available to you. Check tool names carefully.
+**Guidelines:**
+- For casual conversation, just respond naturally without tools
+- Use tools when you need current data or specific capabilities
+- If a tool fails, acknowledge it and try to help anyway
+- Don't announce you're using tools - just use them naturally
+- Keep responses concise and helpful"""
 
-**duckduckgo_search** - Use when:
-- **Current Public Figures/Roles**: "Who is the CEO of Google?"
-- **Recent Events**: "Latest AI news", "Stock market crash today".
-- **Dynamic Facts**: Info that changes over time.
-
-**search_documents** - Use when:
-- User mentions "the PDF", "the file", "uploaded document".
-- User asks "summarize this" (referring to uploaded context).
-
-**calculator** - Use when:
-- User asks for mathematical calculations.
-
-CRITICAL GUIDELINES:
-- **Tool Names**: Use EXACT tool names provided to you. Do not guess or make up tool names.
-- **GitHub**: When searching GitHub, provide the Repo Name, Description, and Star count when available. If the user wants to see code, you MUST fetch the file content using the appropriate tool.
-- **Accuracy**: Do not rely on your internal training data for live code or recent news. Use the tools.
-- **Citations**: Always mention where you got the info from (e.g., "According to the README file...").
-- **Errors**: If a tool fails, inform the user clearly and suggest alternatives.
-"""
 
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
+
 def chat_node(state: ChatState, config):
-    """Main chat node that binds tools dynamically per request."""
+    """Main chat node with safe dynamic tools."""
     messages = state["messages"]
     
-    # Get MCP tools passed from config, or empty list if none
+    # 1. Get all available tools
     dynamic_tools = config.get("configurable", {}).get("mcp_tools", [])
-    
-    # Combine Static Tools + MCP Tools
     all_tools = static_tools + dynamic_tools
     
-    # Log available tools
-    tool_names = [t.name for t in all_tools]
-    logger.info(f"Available tools for this request: {tool_names}")
-    
-    # Bind the combined list to the LLM
-    llm_with_tools = llm.bind_tools(all_tools)
-    
-    # --- STEP 1: SYSTEM PROMPT MANAGEMENT ---
-    # Add available tool names to system prompt
-    tools_info = ""
-    if dynamic_tools:
-        github_tool_names = [t.name for t in dynamic_tools]
-        tools_info = f"\n\nAVAILABLE GITHUB TOOLS: {', '.join(github_tool_names)}"
-        
-    sys_msg_content = UNIVERSAL_SYSTEM_PROMPT + tools_info
-    sys_msg = SystemMessage(content=sys_msg_content)
-
-    # Ensure System Message is always at index 0 (Update or Insert)
-    if messages and isinstance(messages[0], SystemMessage):
-        messages[0] = sys_msg 
+    # 2. Build dynamic system prompt with tool info
+    if all_tools:
+        tool_descriptions = "\n".join([f"  • {t.name}: {t.description[:100]}" for t in all_tools])
+        sys_msg_content = f"{BASE_SYSTEM_PROMPT}\n\n**Available Tools:**\n{tool_descriptions}"
     else:
-        messages = [sys_msg] + messages 
+        sys_msg_content = BASE_SYSTEM_PROMPT
+    
+    sys_msg = SystemMessage(content=sys_msg_content)
+    
+    # Replace or prepend system message
+    if messages and isinstance(messages[0], SystemMessage):
+        messages[0] = sys_msg
+    else:
+        messages = [sys_msg] + messages
 
-    # --- STEP 2: TOKEN-BASED TRIMMING (Updated Logic) ---
+    # 3. Context Trimming - FIXED to use proper token counter
     try:
-        # Separate System Prompt (Always Keep) vs History (Trimable)
-        system_part = messages[:1]
-        conversation_part = messages[1:]
-        
-        # Trim History based on TOKENS
-        # Set to 5000 to accommodate GitHub code files + Chat context
-        trimmed_conversation = trim_messages(
-            conversation_part,
-            max_tokens=5000,       # <-- Limit set to 5000 tokens
-            strategy="last",       # Keep most recent messages
-            token_counter=llm,     # Uses Llama 3 tokenizer for accuracy
-            include_system=False,  # Don't count/trim system prompt here
-            allow_partial=False,   # Don't cut a message in half
-            start_on="human"       # Ensures chat always restarts with a user query
+        trimmed_messages = trim_messages(
+            messages,
+            max_tokens=4000,  # ✅ Reduced to safe limit
+            strategy="last",
+            token_counter=llm,  # ✅ Use actual model tokenizer
+            include_system=True,
+            start_on="human"
         )
-        
-        # Rejoin: System Prompt + Trimmed History
-        messages = system_part + trimmed_conversation
-        
-    except Exception as e:
-        logger.error(f"Error trimming messages: {e}")
-        # Fallback to old method ONLY if trimming crashes
-        if len(messages) > 31:
-            messages = [messages[0]] + messages[-30:]
+    except Exception as trim_error:
+        logger.warning(f"⚠️ Trimming failed: {trim_error}, using last 15 messages")
+        # Fallback: keep system message + last 15 messages
+        trimmed_messages = [messages[0]] + messages[-15:] if len(messages) > 15 else messages
 
-    # --- STEP 3: INVOKE LLM ---
+    # 4. Invoke LLM with tools
     try:
-        response = llm_with_tools.invoke(messages)
-        logger.info(f"LLM Response type: {type(response)}")
-        if hasattr(response, "tool_calls"):
-            logger.info(f"Tool calls requested: {[tc['name'] for tc in response.tool_calls]}")
+        if all_tools:
+            # ✅ GOOD: parallel_tool_calls=False prevents crashes
+            llm_with_tools = llm.bind_tools(all_tools, parallel_tool_calls=False)
+            response = llm_with_tools.invoke(trimmed_messages)
+        else:
+            response = llm.invoke(trimmed_messages)
+        
         return {"messages": [response]}
     
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Error in chat_node: {error_msg}", exc_info=True)
+        logger.error(f"⚠️ Primary LLM error: {type(e).__name__}: {str(e)[:200]}")
+        logger.info("🔄 Attempting fallback model...")
         
-        # If it's a Groq tool parsing error, try without tools
-        if "Failed to call a function" in error_msg or "tool" in error_msg.lower():
-            logger.warning("⚠️ Groq tool error detected, retrying without tool binding...")
-            try:
-                # Retry without tools
-                response_no_tools = llm.invoke(messages)
-                return {"messages": [response_no_tools]}
-            except Exception as retry_error:
-                logger.error(f"Retry also failed: {retry_error}")
+        try:
+            if all_tools:
+                fallback_with_tools = llm_fallback.bind_tools(all_tools, parallel_tool_calls=False)
+                response = fallback_with_tools.invoke(trimmed_messages)
+            else:
+                response = llm_fallback.invoke(trimmed_messages)
+            
+            return {"messages": [response]}
         
-        return {"messages": [AIMessage(content=f"I encountered a technical error. Please try rephrasing your question or disabling the GitHub feature.")]}
+        except Exception as retry_error:
+            logger.error(f"❌ Fallback failed: {type(retry_error).__name__}: {str(retry_error)[:200]}")
+            return {"messages": [AIMessage(
+                content="I'm having technical difficulties right now. Please try again in a moment."
+            )]}
+
 
 async def dynamic_tool_node(state: ChatState, config):
-    """Executes both Static and MCP tools."""
+    """Executes tools with safety limits."""
     messages = state["messages"]
     last_message = messages[-1]
     
-    # Fetch all available tools again
     dynamic_tools = config.get("configurable", {}).get("mcp_tools", [])
     all_tools = static_tools + dynamic_tools
-    
-    # Create a map for quick lookup: {"tool_name": tool_function}
     tool_map = {tool.name: tool for tool in all_tools}
     
     results = []
     
-    # Loop through tool calls requested by LLM
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        for tool_call in last_message.tool_calls:
-            tool_name = tool_call["name"]
-            tool_args = tool_call["args"]
-            tool_id = tool_call.get("id", "unknown")
-            
-            logger.info(f"🔧 Attempting to execute: {tool_name} with args: {tool_args}")
-            
-            selected_tool = tool_map.get(tool_name)
-            
-            if selected_tool:
-                try:
-                    logger.info(f"🛠️ Executing tool: {tool_name}")
-                    
-                    # Execute tool using ainvoke for async compatibility
-                    output = await selected_tool.ainvoke(tool_args)
-                    
-                    logger.info(f"✅ Tool {tool_name} succeeded")
-                    
-                    results.append(
-                        ToolMessage(
-                            tool_call_id=tool_id,
-                            name=tool_name,
-                            content=str(output)
-                        )
-                    )
-                except Exception as e:
-                    error_msg = f"Error executing {tool_name}: {str(e)}"
-                    logger.error(error_msg, exc_info=True)
-                    results.append(
-                        ToolMessage(
-                            tool_call_id=tool_id,
-                            name=tool_name,
-                            content=error_msg
-                        )
-                    )
+    # Check if there are tool calls
+    if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+        logger.warning("⚠️ Tool node called but no tool_calls found")
+        return {"messages": results}
+    
+    # Execute each tool call
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_id = tool_call.get("id", "unknown")
+        
+        logger.info(f"🛠️ Executing tool: {tool_name}")
+        logger.debug(f"   Arguments: {tool_args}")
+        
+        selected_tool = tool_map.get(tool_name)
+        
+        if not selected_tool:
+            error_msg = f"Tool '{tool_name}' not found in registry"
+            logger.error(f"❌ {error_msg}")
+            results.append(ToolMessage(
+                tool_call_id=tool_id, 
+                name=tool_name, 
+                content=error_msg
+            ))
+            continue
+        
+        try:
+            # Execute tool (async-safe)
+            if hasattr(selected_tool, 'ainvoke'):
+                output = await selected_tool.ainvoke(tool_args, config=config)
             else:
-                logger.error(f"❌ Tool '{tool_name}' not found in tool_map. Available: {list(tool_map.keys())}")
-                results.append(
-                    ToolMessage(
-                        tool_call_id=tool_id,
-                        name=tool_name,
-                        content=f"Tool '{tool_name}' not found. Available tools: {', '.join(tool_map.keys())}"
-                    )
-                )
+                output = selected_tool.invoke(tool_args, config=config)
             
+            # ✅ GOOD: Safety limit to prevent memory issues
+            output_str = str(output)
+            if len(output_str) > 50000:
+                output_str = output_str[:50000] + "\n\n[... Output truncated for length ...]"
+                logger.warning(f"⚠️ Tool output truncated (was {len(str(output))} chars)")
+            
+            logger.info(f"✅ Tool '{tool_name}' succeeded ({len(output_str)} chars)")
+            results.append(ToolMessage(
+                tool_call_id=tool_id, 
+                name=tool_name, 
+                content=output_str
+            ))
+        
+        except Exception as e:
+            error_msg = f"Tool execution error: {type(e).__name__}: {str(e)}"
+            logger.error(f"❌ Tool '{tool_name}' failed: {error_msg}")
+            results.append(ToolMessage(
+                tool_call_id=tool_id, 
+                name=tool_name, 
+                content=error_msg
+            ))
+
     return {"messages": results}
 
+
 def should_continue(state: ChatState) -> Literal["tools", "end"]:
-    messages = state["messages"]
-    last_message = messages[-1]
+    """Determine if we need to execute tools."""
+    last_message = state["messages"][-1]
     
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        logger.info(f"Routing to tools: {[tc['name'] for tc in last_message.tool_calls]}")
+        tool_names = [tc["name"] for tc in last_message.tool_calls]
+        logger.info(f"🎯 Routing to tools: {tool_names}")
         return "tools"
-    logger.info("Routing to end")
+    
+    logger.info("🏁 Conversation turn complete")
     return "end"
 
-# Build Graph
-graph = StateGraph(ChatState)
 
+# Build the graph
+graph = StateGraph(ChatState)
 graph.add_node("agent", chat_node)
 graph.add_node("tools", dynamic_tool_node)
-
 graph.add_edge(START, "agent")
-graph.add_conditional_edges(
-    "agent",
-    should_continue,
-    {
-        "tools": "tools",
-        "end": END
-    }
-)
+graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
 graph.add_edge("tools", "agent")

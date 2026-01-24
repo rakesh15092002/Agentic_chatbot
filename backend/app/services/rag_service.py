@@ -1,25 +1,23 @@
 import os
 import shutil
+import logging
 from fastapi import UploadFile
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pinecone import Pinecone
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import logging
 
 logger = logging.getLogger(__name__)
 
-# Initialize Pinecone
+# 1. Initialize Pinecone & Gemini
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 
-# Use Google Gemini Embeddings
 embeddings = GoogleGenerativeAIEmbeddings(
     model="models/text-embedding-004",
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-# Text splitter for chunking documents
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
     chunk_overlap=200,
@@ -27,124 +25,97 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 async def process_and_store_pdf(file: UploadFile, thread_id: str):
-    """Process PDF and store in Pinecone with thread_id metadata."""
-    temp_filename = None
-    
+    """Process PDF and store in Pinecone with thread_id."""
+    temp_filename = f"temp_{file.filename}"
     try:
-        # Save file temporarily
-        temp_filename = f"temp_{file.filename}"
+        # Save temp file
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        logger.info(f"Processing PDF: {file.filename} for thread: {thread_id}")
+        logger.info(f"📂 Processing {file.filename}...")
 
-        # Load PDF
+        # Load & Split
         loader = PyPDFLoader(temp_filename)
         documents = loader.load()
-        
-        # Split into chunks
         chunks = text_splitter.split_documents(documents)
-        logger.info(f"Split into {len(chunks)} chunks")
 
-        # Prepare Vectors with Metadata
-        vectors_to_upsert = []
-        
+        vectors = []
         for i, doc in enumerate(chunks):
-            # Create Embedding
+            # Embed
             vector_values = embeddings.embed_query(doc.page_content)
             
-            # Create Unique ID for this chunk
-            chunk_id = f"{thread_id}_{file.filename}_{i}"
-
-            vectors_to_upsert.append({
-                "id": chunk_id,
+            # Metadata is CRITICAL for filtering
+            metadata = {
+                "text": doc.page_content,
+                "source": file.filename,
+                "thread_id": thread_id, # <--- This enables the filter
+                "page": doc.metadata.get("page", 0)
+            }
+            
+            vectors.append({
+                "id": f"{thread_id}_{i}",
                 "values": vector_values,
-                "metadata": {
-                    "text": doc.page_content,
-                    "source": file.filename,
-                    "thread_id": thread_id,
-                    "chunk_index": i,
-                    "page": doc.metadata.get("page", 0)
-                }
+                "metadata": metadata
             })
 
-        # Upsert to Pinecone in batches
-        if vectors_to_upsert:
-            batch_size = 100
-            for i in range(0, len(vectors_to_upsert), batch_size):
-                batch = vectors_to_upsert[i:i + batch_size]
-                index.upsert(vectors=batch)
-            
-            logger.info(f"Uploaded {len(vectors_to_upsert)} vectors to Pinecone")
+        # Upsert in batches
+        if vectors:
+            index.upsert(vectors=vectors)
+            logger.info(f"✅ Upserted {len(vectors)} chunks for thread {thread_id}")
 
-        # Cleanup
-        if temp_filename and os.path.exists(temp_filename):
-            os.remove(temp_filename)
-            
-        return True, f"Successfully indexed {len(vectors_to_upsert)} chunks from {file.filename}"
+        return True, f"Indexed {len(vectors)} chunks."
 
     except Exception as e:
-        logger.error(f"Error processing PDF: {str(e)}")
-        # Cleanup on error
-        if temp_filename and os.path.exists(temp_filename):
-            os.remove(temp_filename)
+        logger.error(f"❌ PDF Error: {e}")
         return False, str(e)
-
+    finally:
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
 
 def search_documents(query: str, thread_id: str, top_k: int = 5):
-    """Search Pinecone for relevant documents filtered by thread_id."""
+    """Search Pinecone with Thread ID filter."""
     try:
-        # Embed the query
+        logger.info(f"🔍 Searching Pinecone: '{query}' (Thread: {thread_id})")
+        
         query_vector = embeddings.embed_query(query)
         
-        # Query Pinecone with thread_id filter
         results = index.query(
             vector=query_vector,
             top_k=top_k,
             include_metadata=True,
-            filter={"thread_id": thread_id}
+            filter={"thread_id": thread_id} # <--- MUST MATCH metadata above
         )
         
-        # Extract context
-        contexts = []
+        matches = []
         for match in results.get('matches', []):
-            if match.get('metadata') and match['metadata'].get('text'):
-                contexts.append({
-                    'text': match['metadata']['text'],
-                    'source': match['metadata'].get('source', 'Unknown'),
-                    'score': match.get('score', 0),
-                    'page': match['metadata'].get('page', 0)
+            if match.get('metadata'):
+                matches.append({
+                    'text': match['metadata'].get('text', ''),
+                    'page': match['metadata'].get('page', 0),
+                    'score': match.get('score', 0)
                 })
         
-        return contexts
-    
+        logger.info(f"✅ Found {len(matches)} matches")
+        return matches
+
     except Exception as e:
-        logger.error(f"Error searching documents: {str(e)}")
+        logger.error(f"❌ Search Error: {e}")
         return []
 
-
 def delete_thread_documents(thread_id: str):
-    """Delete all documents associated with a thread_id from Pinecone."""
+    """Clean up documents for a thread."""
     try:
-        # Query to get all IDs for this thread
-        dummy_vector = [0.0] * 768  # Gemini embedding dimension
+        # Vector size must match your model (768 for Gemini 004)
+        dummy = [0.0] * 768 
         results = index.query(
-            vector=dummy_vector,
-            top_k=10000,
-            include_metadata=True,
+            vector=dummy, 
+            top_k=1000, 
             filter={"thread_id": thread_id}
         )
-        
-        # Extract IDs and delete
-        ids_to_delete = [match['id'] for match in results.get('matches', [])]
-        
-        if ids_to_delete:
-            index.delete(ids=ids_to_delete)
-            logger.info(f"Deleted {len(ids_to_delete)} vectors for thread {thread_id}")
-            return True, f"Deleted {len(ids_to_delete)} document chunks"
-        else:
-            return True, "No documents found for this thread"
-    
+        ids = [m['id'] for m in results.get('matches', [])]
+        if ids:
+            index.delete(ids=ids)
+            return True, f"Deleted {len(ids)} chunks"
+        return True, "No docs found"
     except Exception as e:
-        logger.error(f"Error deleting thread documents: {str(e)}")
         return False, str(e)
