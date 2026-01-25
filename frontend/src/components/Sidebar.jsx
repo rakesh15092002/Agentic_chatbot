@@ -20,101 +20,132 @@ const Sidebar = ({ expand, setExpand }) => {
   const handleNewChat = () => {
     setSelectedChat(null);
     router.push("/");
-    // Close sidebar on mobile when clicking new chat
-    if (window.innerWidth < 768) {
-      setExpand(false);
-    }
+    if (window.innerWidth < 768) setExpand(false);
   };
 
   return (
     <>
-      {/* --- MOBILE OVERLAY --- */}
-      <div 
-        onClick={() => setExpand(false)}
-        className={`md:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300
-        ${expand ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
-      ></div>
-
-      {/* --- SIDEBAR CONTAINER --- */}
+      {/* ---------------- MOBILE OVERLAY ---------------- */}
       <div
-        className={`flex flex-col justify-between bg-[#212327] pt-7 transition-all duration-300 z-50 
-        border-r border-gray-800 h-screen
-        
-        /* --- MOBILE STYLES (Screen < 768px) --- */
-        fixed top-0 left-0
-        ${expand ? "w-72 px-4" : "w-0 px-0 overflow-hidden border-none"}
+        onClick={() => setExpand(false)}
+        className={`md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40
+        transition-opacity duration-300
+        ${expand ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+      />
 
-        /* --- DESKTOP STYLES (Screen >= 768px) --- */
-        md:relative md:border-r
-        ${expand ? "md:w-72" : "md:w-20 md:px-0"}
-        `}
+      {/* ---------------- SIDEBAR ---------------- */}
+      <div
+        className={`flex flex-col h-screen bg-[#171717] border-r border-[#333] z-50
+        fixed top-0 left-0 md:relative
+        w-[260px]
+        transform transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
+        ${expand ? "translate-x-0" : "-translate-x-full md:translate-x-0 md:w-[72px]"}
+        overflow-hidden`}
       >
-        <div>
-          {/* Menu Icon (Toggle) */}
-          <div className={`flex items-center absolute w-10 left-5 mb-6`}>
-            <div
+        {/* ---------------- TOP ---------------- */}
+        <div className="flex flex-col pt-5 px-3">
+          {/* Toggle */}
+          <div className={`flex items-center ${expand ? "justify-start pl-1" : "justify-center"} mb-6`}>
+            <button
               onClick={() => setExpand(!expand)}
-              className="group flex items-center justify-center hover:bg-gray-700/50 text-gray-400 hover:text-white transition-all duration-200 h-10 w-10 rounded-full cursor-pointer"
+              className="p-2 hover:bg-white/10 rounded-lg transition"
             >
-              <Image 
-                src={assets.menu_icon} 
-                alt="Menu" 
-                className="w-6 h-6 opacity-80" 
-              />
-            </div>
+              <Image src={assets.menu_icon} alt="Menu" className="w-5 h-5 invert opacity-70" />
+            </button>
           </div>
 
-          {/* New Chat Button */}
-          <button
-            onClick={handleNewChat}
-            className={`flex items-center mt-12 justify-center cursor-pointer transition-all duration-300 whitespace-nowrap overflow-hidden ${
-              expand 
-                ? "bg-primary hover:opacity-90 rounded-full h-12 w-full gap-3 shadow-md" 
-                : "group relative h-10 w-10 mx-auto hover:bg-gray-700/50 rounded-full"
-            }`}
-          >
-            <Image className={expand ? "w-5" : "w-6"} src={expand ? assets.chat_icon : assets.chat_icon_dull} alt="New Chat" />
-            {expand && <p className="text-white text-base font-medium">New chat</p>}
-          </button>
+          {/* ---------------- NEW CHAT ---------------- */}
+          <div className="relative group">
+            <button
+              onClick={handleNewChat}
+              className={`flex items-center justify-center transition-all duration-300 whitespace-nowrap overflow-hidden
+              ${expand
+                ? "bg-blue-600 hover:bg-blue-700 w-full py-3 px-4 rounded-xl gap-3"
+                : "bg-transparent hover:bg-white/10 w-10 h-10 rounded-lg mx-auto"
+              }`}
+            >
+              <Image
+                src={expand ? assets.chat_icon : assets.chat_icon_dull}
+                alt="New Chat"
+                className={`transition-all duration-300 shrink-0
+                ${expand ? "w-5 brightness-200" : "w-6 opacity-60"}`}
+              />
 
-          {/* Recents List */}
-          <div
-            onScroll={handleScroll}
-            className={`mt-8 text-white/40 text-sm overflow-y-auto max-h-[60vh] custom-scrollbar whitespace-nowrap 
-            ${expand ? "block opacity-100" : "hidden opacity-0"} transition-opacity duration-300`}
-          >
-            <p className="my-2 px-2 font-medium text-xs uppercase tracking-wider">Recents</p>
+              <span
+                className={`text-white text-sm transition-all duration-300
+                ${expand ? "max-w-[150px] opacity-100" : "max-w-0 opacity-0"}`}
+              >
+                New Chat
+              </span>
+            </button>
+
+            {!expand && (
+              <div className="absolute left-14 top-1/2 -translate-y-1/2
+                bg-black border border-white/20 text-white text-xs px-2 py-1 rounded
+                opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                New Chat
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ---------------- RECENT CHATS ---------------- */}
+        <div
+          onScroll={handleScroll}
+          className={`flex-1 overflow-y-auto mt-4 px-2 transition-opacity duration-300
+          ${expand ? "opacity-100" : "opacity-100"}`}
+        >
+          {expand && (
+            <p className="text-[11px] font-bold text-gray-500 mb-3 px-3 uppercase tracking-wider">
+              Recent
+            </p>
+          )}
+
+          <div className="flex flex-col gap-1">
             {chats
-              // ✅ CHANGE 1: Allow chats that have EITHER a title OR a name
-              .filter((chat) => chat && (chat.title || chat.name))
-              .map((chat) => (
-                <ChatLabel 
-                    key={chat._id} 
-                    // ✅ CHANGE 2: Prioritize 'title', fallback to 'name', then "New Chat"
-                    name={chat.title || chat.name || "New Chat"} 
-                    id={chat._id} 
-                    openMenu={openMenu} 
-                    setOpenMenu={setOpenMenu} 
-                    // Close sidebar on mobile if a chat is clicked
-                    onSelect={() => { if(window.innerWidth < 768) setExpand(false); }}
-                />
+              .filter(chat => chat && (chat.title || chat.name))
+              .map(chat => (
+                <div key={chat._id}>
+                  <ChatLabel
+                    name={chat.title || chat.name || "New Chat"}
+                    id={chat._id}
+                    openMenu={openMenu}
+                    setOpenMenu={setOpenMenu}
+                    compact={!expand}
+                    onSelect={() => {
+                      if (window.innerWidth < 768) setExpand(false);
+                    }}
+                  />
+                </div>
               ))}
           </div>
         </div>
 
-        {/* User Profile */}
-        <div className="mb-4 whitespace-nowrap overflow-hidden">
-          <div 
-            onClick={user ? null : openSignIn} 
-            className={`flex items-center ${expand ? "hover:bg-white/5 rounded-xl px-3 py-3 justify-start" : "justify-center w-full hover:bg-white/5 rounded-xl py-3"} cursor-pointer text-white/70`}
+        {/* ---------------- USER PROFILE ---------------- */}
+        <div className="p-3 border-t border-white/10 bg-[#171717]">
+          <button
+            onClick={user ? null : openSignIn}
+            className={`flex items-center w-full p-2 rounded-xl hover:bg-white/5 transition
+            ${expand ? "justify-start gap-3" : "justify-center"}`}
           >
             {user ? (
-                <div className="flex items-center justify-center"><UserButton /></div>
+              <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 shrink-0">
+                <UserButton appearance={{ elements: { userButtonAvatarBox: "w-full h-full" } }} />
+              </div>
             ) : (
-                <Image src={assets.profile_icon} alt="" className="w-7 h-7 rounded-full opacity-80" />
+              <Image src={assets.profile_icon} alt="" className="w-7 h-7 rounded-full opacity-70" />
             )}
-            {expand && <span className="ml-3 font-medium text-sm truncate">My Profile</span>}
-          </div>
+
+            <div
+              className={`flex flex-col overflow-hidden transition-all duration-300
+              ${expand ? "max-w-[150px] opacity-100" : "max-w-0 opacity-0"}`}
+            >
+              <span className="text-sm text-gray-200 truncate">
+                {user ? user.fullName || "User" : "Sign In"}
+              </span>
+              {user && <span className="text-xs text-gray-500">My Profile</span>}
+            </div>
+          </button>
         </div>
       </div>
     </>
